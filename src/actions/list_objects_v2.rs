@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
+use percent_encoding::percent_decode;
 use serde::Deserialize;
 use time::OffsetDateTime;
 use url::Url;
@@ -47,8 +48,8 @@ pub struct ListObjectsV2Response {
     pub max_keys: Option<u16>,
     #[serde(rename = "CommonPrefixes", default)]
     pub common_prefixes: Vec<CommonPrefixes>,
-    // #[serde(rename = "EncodingType")]
-    // encoding_type: String,
+    #[serde(rename = "EncodingType")]
+    encoding_type: String,
     // #[serde(rename = "KeyCount")]
     // key_count: u16,
     // #[serde(rename = "ContinuationToken")]
@@ -164,12 +165,18 @@ impl<'a> ListObjectsV2<'a> {
 
     pub fn parse_response(s: &str) -> Result<ListObjectsV2Response, quick_xml::DeError> {
         let mut parsed: ListObjectsV2Response = quick_xml::de::from_str(s)?;
+        let url_encoded = parsed.encoding_type == "url";
 
         // S3 returns an Owner with an empty DisplayName and ID when fetch-owner is disabled
         for content in parsed.contents.iter_mut() {
             if let Some(owner) = &content.owner {
                 if owner.id.is_empty() && owner.display_name.is_empty() {
                     content.owner = None;
+                }
+            }
+            if url_encoded {
+                if let Ok(Cow::Owned(s)) = percent_decode(content.key.as_bytes()).decode_utf8() {
+                    content.key = s;
                 }
             }
         }
